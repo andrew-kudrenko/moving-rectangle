@@ -2,16 +2,9 @@ program segment 'code'
         assume cs: program, ds: data
 
 updateColors proc
-updateInnerColor:
     inc innerColor
-    cmp innerColor, 0
-    je updateInnerColor 
-    
-updateOuterColor:
     inc outerColor
-    cmp outerColor, 0
-    je updateOuterColor
-    
+   
     ret
 updateColors endp
         
@@ -241,6 +234,12 @@ setTimer proc
     
 updateTimer:
     mov lastCheckAt, cx
+    inc elapsedTime
+    
+    mov di, pauseColorUpdatesIn
+    cmp elapsedTime, di
+    ja ignoreUpdateTimer
+
     call updateColors
 
 ignoreUpdateTimer:
@@ -252,21 +251,15 @@ ignoreUpdateTimer:
     ret
 setTimer endp
 
-updateLastKeyPressAt proc
-    push ax
-    push cx
+getChar proc
     push dx
-    
-    mov ah, 00h
-    int 1ah
-    mov lastKeyPressAt, dx
-    
+    mov ah, 06h          
+    mov dl, 0ffh         
+    int 21h
     pop dx
-    pop cx
-    pop ax
-
+    
     ret
-updateLastKeyPressAt endp
+getChar endp
 
 startup:
     mov ax, data
@@ -277,6 +270,7 @@ startup:
     
     mov ah, 0h
     int 1ah
+    
     mov lastCheckAt, dx
     
     mov cx, rectSize
@@ -285,28 +279,22 @@ startup:
 
 mainLoop:
     call setTimer
-
     
-    push dx
-    mov ah, 06h          
-    mov dl, 0ffh         
-    int 21h
-    pop dx
+    call getChar
     
     cmp al, 0
+    
     je redraw
-    jmp ignoreRedraw
+    jmp afterRedraw
     
 redraw:
     call draw    
 
-ignoreRedraw:
+afterRedraw:
     jnz analyzeInput            
     jmp mainLoop
 
-analyzeInput:
-    call updateLastKeyPressAt
-
+analyzeInput:    
     cmp al, 3bh; Exit on f1 pressed
     je cleanup
     
@@ -325,7 +313,9 @@ analyzeInput:
     jmp mainLoop
 
 moveLeft:
-    cmp si, 2
+    mov elapsedTime, 0
+    
+    cmp si, 0
     jbe mainLoop
     
     call clear
@@ -334,6 +324,8 @@ moveLeft:
     jmp mainLoop
     
 moveRight:
+    mov elapsedTime, 0
+    
     mov di, cx
     add di, si
     
@@ -343,10 +335,13 @@ moveRight:
     call clear
 
     add si, speed
+    
     jmp mainLoop
     
 moveUp:
-    cmp dx, 2
+    mov elapsedTime, 0
+    
+    cmp dx, 0
     jbe mainLoop
     
     call clear
@@ -355,6 +350,8 @@ moveUp:
     jmp mainLoop
     
 moveDown:
+    mov elapsedTime, 0
+
     mov di, rectSize
     add di, dx
     
@@ -366,6 +363,10 @@ moveDown:
     jmp mainLoop
 
 cleanup:
+    mov ah, 09h
+    mov dx, offset exitMessage
+    int 21h
+
     mov ah, 08h
     int 21h
     
@@ -376,10 +377,12 @@ cleanup:
 program ends
 
 data segment
+    exitMessage db 'Program has been down. Press any key to exit$'
+    
     currentColor db 0
     bgColor db 0
-    outerColor db 10
-    innerColor db 7
+    outerColor db 6
+    innerColor db 9
     
     speed dw 5
     rectSize dw 80
@@ -390,11 +393,11 @@ data segment
     positionX dw 40
     positionY dw 25
     
-    lastKeyPressAt dw 0
     lastCheckAt dw 0
-    checkPeriod dw 18
+    checkPeriod dw 18; 18 ~ 1s
     
-    pauseColorUpdatesIn dw 180
+    elapsedTime dw 0
+    pauseColorUpdatesIn dw 10; check periods before color changing pause
 data ends
 
 stk segment 'stack'
